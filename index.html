@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Cross‑Platform Snake — Play on Mobile & Laptop</title>
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--accent:#00e676;--muted:#94a3b8}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    body{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#071028 0%, #07192b 100%);color:var(--muted)}
+    .wrap{width:100%;max-width:900px;margin:24px;padding:16px;background:rgba(255,255,255,0.02);border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    header{display:flex;align-items:center;justify-content:space-between;padding:8px 4px}
+    h1{font-size:18px;margin:0;color:white}
+    .meta{font-size:13px;color:var(--muted)}
+
+    .game-row{display:flex;gap:16px;align-items:center}
+    .panel{background:var(--panel);padding:12px;border-radius:10px;flex:1}
+    canvas{display:block;width:100%;height:auto;border-radius:8px;background:#061122}
+
+    .controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:8px}
+    .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:8px;color:var(--muted);cursor:pointer}
+    .btn.primary{border-color:var(--accent);color:var(--accent)}
+    .score{font-weight:600;color:var(--accent)}
+
+    /* mobile on-screen dpad */
+    .dpad{position:relative;width:220px;height:220px;margin:10px auto;touch-action:none}
+    .dpad .pad{position:absolute;inset:0;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent)}
+    .dpad button{position:absolute;width:64px;height:64px;border-radius:12px;border:0;background:rgba(255,255,255,0.02);color:var(--muted);font-size:20px}
+    .dpad .up{left:50%;transform:translateX(-50%);top:10px}
+    .dpad .down{left:50%;transform:translateX(-50%);bottom:10px}
+    .dpad .left{left:10px;top:50%;transform:translateY(-50%)}
+    .dpad .right{right:10px;top:50%;transform:translateY(-50%)}
+
+    .hint{font-size:13px;color:var(--muted);margin-top:8px;text-align:center}
+
+    footer{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+
+    @media (max-width:720px){
+      .game-row{flex-direction:column}
+      .dpad{width:180px;height:180px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Cross‑Platform Snake</h1>
+        <div class="meta">Plays on mobile (touch) and laptop (keyboard). Responsive canvas.</div>
+      </div>
+      <div class="meta">Use arrows / WASD or swipe / on-screen D‑pad</div>
+    </header>
+
+    <div class="game-row">
+      <div class="panel" style="flex:2">
+        <canvas id="game" width="600" height="600"></canvas>
+        <div class="controls">
+          <button class="btn" id="btn-pause">Pause</button>
+          <button class="btn primary" id="btn-restart">Restart</button>
+          <div style="min-width:14px"></div>
+          <div>Score: <span class="score" id="score">0</span></div>
+        </div>
+        <div class="hint">Tip: on mobile use the on-screen D‑pad or swipe — game adapts to screen size.</div>
+      </div>
+
+      <div style="width:260px;max-width:30%">
+        <div class="panel">
+          <h3 style="margin-top:0;color:white">How to play</h3>
+          <ul style="margin:8px 0;padding-left:18px;line-height:1.5;color:var(--muted)">
+            <li>Move the snake to eat apples to grow.</li>
+            <li>Avoid hitting walls or the snake's own body.</li>
+            <li>Use arrow keys or WASD on laptop.</li>
+            <li>Use swipe or the D‑pad on mobile.</li>
+          </ul>
+          <hr style="border:none;border-top:1px solid rgba(255,255,255,0.02);margin:10px 0">
+          <div style="text-align:center">
+            <strong style="color:var(--accent)">High scores are local to your browser</strong>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:12px;text-align:center">
+          <div style="font-size:14px;color:var(--muted)">Mobile controls</div>
+          <div class="dpad" id="dpad" aria-hidden="false">
+            <div class="pad"></div>
+            <button class="up" data-dir="up">▲</button>
+            <button class="down" data-dir="down">▼</button>
+            <button class="left" data-dir="left">◀</button>
+            <button class="right" data-dir="right">▶</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="meta">Made with HTML5 Canvas • Responsive • No install</div>
+      <div class="meta">Press R to restart</div>
+    </footer>
+  </div>
+
+  <script>
+    // Cross‑platform Snake
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const btnPause = document.getElementById('btn-pause');
+    const btnRestart = document.getElementById('btn-restart');
+
+    // High dpi scaling
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(rect.width * ratio);
+      canvas.height = Math.floor(rect.width * ratio); // keep square
+      ctx.setTransform(ratio,0,0,ratio,0,0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Game settings
+    const gridSize = 20; // pixels per cell (logical)
+    let cols, rows;
+    function computeGrid() {
+      const size = canvas.width / (window.devicePixelRatio || 1);
+      cols = Math.floor(size / gridSize);
+      rows = cols; // square grid
+    }
+
+    // Game state
+    let snake, dir, nextDir, apple, score, running, lastTick, tickInterval;
+
+    function init() {
+      computeGrid();
+      const startX = Math.floor(cols/2);
+      const startY = Math.floor(rows/2);
+      snake = [ {x:startX, y:startY}, {x:startX-1, y:startY}, {x:startX-2, y:startY} ];
+      dir = {x:1,y:0}; nextDir = null;
+      placeApple();
+      score = 0;
+      running = true;
+      tickInterval = 100; // ms per move
+      lastTick = performance.now();
+      scoreEl.textContent = score;
+    }
+
+    function placeApple(){
+      while(true){
+        const x = Math.floor(Math.random()*cols);
+        const y = Math.floor(Math.random()*rows);
+        if(!snake.some(s=>s.x===x && s.y===y)){ apple = {x,y}; break; }
+      }
+    }
+
+    function gameOver(){
+      running = false;
+      saveHighScore();
+      setTimeout(()=>{
+        if(confirm('Game over — score '+score+'\nRestart?')) restart();
+      }, 50);
+    }
+
+    function saveHighScore(){
+      try{
+        const key = 'cross-snake-high';
+        const prev = parseInt(localStorage.getItem(key) || '0',10);
+        if(score>prev) localStorage.setItem(key, String(score));
+      }catch(e){}
+    }
+
+    function restart(){ init(); }
+
+    function step(){
+      // apply next dir (prevent reversing)
+      if(nextDir){
+        if(!(nextDir.x === -dir.x && nextDir.y === -dir.y)) dir = nextDir;
+        nextDir = null;
+      }
+      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+      // wall collision
+      if(head.x<0 || head.x>=cols || head.y<0 || head.y>=rows){ gameOver(); return; }
+      // self collision
+      if(snake.some(s=>s.x===head.x && s.y===head.y)){ gameOver(); return; }
+
+      snake.unshift(head);
+      if(head.x===apple.x && head.y===apple.y){ score++; placeApple(); scoreEl.textContent = score; // speed up slightly
+        if(tickInterval>45) tickInterval -= 1.5;
+      } else {
+        snake.pop();
+      }
+    }
+
+    function draw(){
+      // clear
+      const w = canvas.width/(window.devicePixelRatio||1);
+      const h = canvas.height/(window.devicePixelRatio||1);
+      ctx.clearRect(0,0,w,h);
+
+      // background grid (subtle)
+      ctx.fillStyle = '#041018';
+      ctx.fillRect(0,0,w,h);
+
+      // draw apple
+      drawCell(apple.x, apple.y, true);
+
+      // draw snake
+      for(let i=0;i<snake.length;i++){
+        const s = snake[i];
+        drawCell(s.x, s.y, false, i===0);
+      }
+
+      // HUD small
+      ctx.fillStyle = '#8aa3b3';
+      ctx.font = '12px system-ui,Arial';
+      ctx.fillText('Score: '+score, 8, 16);
+    }
+
+    function drawCell(cx, cy, isApple=false, isHead=false){
+      const px = cx*gridSize + 1;
+      const py = cy*gridSize + 1;
+      const size = gridSize - 2;
+      if(isApple){
+        ctx.fillStyle = '#ff4d6d';
+        roundRect(ctx, px, py, size, size, 4, true, false);
+      } else {
+        if(isHead) ctx.fillStyle = '#00ffaa'; else ctx.fillStyle = '#15756a';
+        roundRect(ctx, px, py, size, size, 4, true, false);
+      }
+    }
+
+    function roundRect(ctx,x,y,w,h,r,fill,stroke){
+      if (typeof r === 'undefined') r = 5;
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.arcTo(x+w,y,x+w,y+h,r);
+      ctx.arcTo(x+w,y+h,x,y+h,r);
+      ctx.arcTo(x,y+h,x,y,r);
+      ctx.arcTo(x,y,x+w,y,r);
+      ctx.closePath();
+      if(fill) ctx.fill();
+      if(stroke) ctx.stroke();
+    }
+
+    function loop(now){
+      if(!running) { draw(); requestAnimationFrame(loop); return; }
+      if(now - lastTick >= tickInterval){ lastTick = now; step(); }
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // Input: keyboard
+    window.addEventListener('keydown', e=>{
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D'].includes(e.key)){
+        e.preventDefault();
+        const k = e.key.replace('Arrow','').toLowerCase();
+        if(['up','down','left','right'].includes(k)) setDir(k);
+        else if(k==='w') setDir('up'); else if(k==='s') setDir('down'); else if(k==='a') setDir('left'); else if(k==='d') setDir('right');
+      }
+      if(e.key===' ' || e.key==='Spacebar') { running=!running; }
+      if(e.key==='r' || e.key==='R') restart();
+    });
+
+    function setDir(name){
+      const map = {up:{x:0,y:-1},down:{x:0,y:1},left:{x:-1,y:0},right:{x:1,y:0}};
+      nextDir = map[name];
+    }
+
+    // On-screen buttons
+    document.querySelectorAll('.dpad button').forEach(b=>{
+      b.addEventListener('touchstart', e=>{ e.preventDefault(); setDir(b.dataset.dir); }, {passive:false});
+      b.addEventListener('mousedown', e=>{ e.preventDefault(); setDir(b.dataset.dir); });
+    });
+
+    // Swipe support
+    (function addSwipe(){
+      let startX=0,startY=0,distX=0,distY=0, startTime=0;
+      const threshold = 20; // px
+      const el = document.getElementById('game');
+      el.addEventListener('touchstart', function(e){
+        const t = e.touches[0]; startX = t.clientX; startY = t.clientY; startTime = Date.now();
+      }, {passive:true});
+      el.addEventListener('touchmove', function(e){
+        const t = e.touches[0]; distX = t.clientX - startX; distY = t.clientY - startY;
+      }, {passive:true});
+      el.addEventListener('touchend', function(e){
+        if(Math.abs(distX) < threshold && Math.abs(distY) < threshold) return;
+        if(Math.abs(distX) > Math.abs(distY)){
+          if(distX>0) setDir('right'); else setDir('left');
+        } else {
+          if(distY>0) setDir('down'); else setDir('up');
+        }
+        distX = distY = 0;
+      }, {passive:true});
+    })();
+
+    // Pause / restart buttons
+    btnPause.addEventListener('click', ()=>{ running = !running; btnPause.textContent = running? 'Pause' : 'Resume'; });
+    btnRestart.addEventListener('click', ()=>{ restart(); });
+
+    // Keep canvas grid responsive on load
+    function adaptGrid(){
+      resizeCanvas();
+      computeGrid();
+      // adjust logical gridSize so it fits nicely
+      // no-op for now (gridSize fixed) but computeGrid ensures cols/rows set
+    }
+    window.addEventListener('load', ()=>{ adaptGrid(); init(); requestAnimationFrame(loop); });
+
+  </script>
+</body>
+</html>
